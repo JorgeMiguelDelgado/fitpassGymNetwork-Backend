@@ -10,6 +10,21 @@ from .models import Booking, FitnessClass, Gym, Product, Workout
 from .services import book_class, cancel_booking, check_in, find_nearby_gyms, purchase_product, record_attendance
 
 
+@require_GET
+def api_root(request):
+    return JsonResponse({
+        "name": "FitPass Gym API",
+        "status": "running",
+        "endpoints": {
+            "admin": "/admin/",
+            "nearby_gyms": "/api/gyms/nearby/?lat=-16.5&lon=-68.15&radius_km=10",
+            "classes": "/api/classes/",
+            "products": "/api/products/",
+            "workouts": "/api/workouts/",
+        },
+    })
+
+
 def _body(request):
     try:
         return json.loads(request.body or "{}")
