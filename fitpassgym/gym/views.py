@@ -1,12 +1,14 @@
 import json
+from functools import wraps
 
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Booking, FitnessClass, Gym, Product, Workout
+from .models import ApiToken, Booking, FitnessClass, Gym, Product, Workout
 from .services import book_class, cancel_booking, check_in, find_nearby_gyms, purchase_product, record_attendance
 
 
@@ -30,6 +32,37 @@ def _body(request):
         return json.loads(request.body or "{}")
     except json.JSONDecodeError as exc:
         raise ValidationError("Invalid JSON body.") from exc
+
+
+def api_login_required(view):
+    """Accept a Django session or an Authorization: Token header."""
+    @csrf_exempt
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            authorization = request.headers.get("Authorization", "")
+            if authorization.startswith("Token "):
+                token = ApiToken.objects.select_related("user").filter(key=authorization[6:]).first()
+                if token:
+                    request.user = token.user
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Authentication required."}, status=401)
+        return view(request, *args, **kwargs)
+    return wrapped
+
+
+@csrf_exempt
+@require_POST
+def api_login(request):
+    try:
+        data = _body(request)
+    except ValidationError as exc:
+        return _error_response(exc)
+    user = authenticate(request, username=data.get("username", ""), password=data.get("password", ""))
+    if not user:
+        return JsonResponse({"error": "Invalid username or password."}, status=401)
+    token, _ = ApiToken.objects.get_or_create(user=user)
+    return JsonResponse({"token": token.key, "user": {"id": user.id, "username": user.username, "name": user.get_full_name()}})
 
 
 def _error_response(exc):
@@ -59,7 +92,7 @@ def class_list(request):
     return JsonResponse({"results": [{"id": item.id, "title": item.title, "gym": item.gym.name if item.gym else None, "starts_at": item.starts_at.isoformat(), "ends_at": item.ends_at.isoformat(), "capacity": item.capacity, "is_virtual": item.is_virtual, "instructor": item.instructor.user.get_full_name() or item.instructor.user.username} for item in classes.order_by("starts_at")]})
 
 
-@login_required
+@api_login_required
 @require_POST
 def create_booking(request, class_id):
     try:
@@ -69,7 +102,7 @@ def create_booking(request, class_id):
         return _error_response(exc)
 
 
-@login_required
+@api_login_required
 @require_POST
 def cancel_booking_view(request, booking_id):
     try:
@@ -79,7 +112,7 @@ def cancel_booking_view(request, booking_id):
         return _error_response(exc)
 
 
-@login_required
+@api_login_required
 @require_POST
 def attendance(request, booking_id):
     try:
@@ -89,7 +122,7 @@ def attendance(request, booking_id):
         return _error_response(exc)
 
 
-@login_required
+@api_login_required
 @require_POST
 def gym_checkin(request, gym_id):
     try:
@@ -105,7 +138,7 @@ def product_list(request):
     return JsonResponse({"results": [{"id": item.id, "name": item.name, "kind": item.kind, "access_scope": item.access_scope, "gym_id": item.gym_id, "price": str(item.price), "currency": item.currency} for item in products]})
 
 
-@login_required
+@api_login_required
 @require_POST
 def buy_product(request, product_id):
     try:
@@ -116,8 +149,15 @@ def buy_product(request, product_id):
         return _error_response(exc)
 
 
-@login_required
+@api_login_required
 @require_GET
 def workout_list(request):
     workouts = Workout.objects.filter(published=True)
     return JsonResponse({"results": [{"id": item.id, "title": item.title, "video_url": item.video_url, "duration_minutes": item.duration_minutes, "equipment": item.equipment} for item in workouts]})
+
+
+@api_login_required
+@require_GET
+def booking_list(request):
+    bookings = Booking.objects.filter(user=request.user).select_related("fitness_class__gym").order_by("-created_at")
+    return JsonResponse({"results": [{"id": item.id, "class_id": item.fitness_class_id, "title": item.fitness_class.title, "gym": item.fitness_class.gym.name if item.fitness_class.gym else None, "starts_at": item.fitness_class.starts_at.isoformat(), "status": item.status, "waitlist_position": item.waitlist_position} for item in bookings]})

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+import secrets
 
 
 class Gym(models.Model):
@@ -31,6 +32,12 @@ class Instructor(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     gyms = models.ManyToManyField(Gym, related_name="instructors", blank=True)
     specialties = models.JSONField(default=list, blank=True)
+
+
+class ApiToken(models.Model):
+    key = models.CharField(max_length=64, unique=True, default=secrets.token_hex, editable=False)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="api_token")
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class Product(models.Model):
