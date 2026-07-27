@@ -1,8 +1,9 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from django.urls import resolve, reverse
 
 from .models import Booking, FitnessClass, Gym, Instructor, Notification, Product, Promotion
 from .services import book_class, cancel_booking, check_in, purchase_product
@@ -38,3 +39,29 @@ class FitPassServicesTests(TestCase):
         self.assertEqual(entry.purchase, purchase)
         purchase.refresh_from_db()
         self.assertEqual(purchase.remaining_credits, 0)
+
+
+class ModularArchitectureTests(SimpleTestCase):
+    def test_models_are_owned_by_business_modules(self):
+        expected_modules = {
+            Booking: "fitpassgym.gym.scheduling.models",
+            Gym: "fitpassgym.gym.locations.models",
+            Product: "fitpassgym.gym.commerce.models",
+            Notification: "fitpassgym.gym.notifications.models",
+        }
+        for model, module in expected_modules.items():
+            with self.subTest(model=model.__name__):
+                self.assertEqual(model.__module__, module)
+                self.assertEqual(model._meta.app_label, "gym")
+
+    def test_public_routes_keep_the_gym_namespace(self):
+        expected_routes = {
+            "gym:nearby-gyms": "/api/gyms/nearby/",
+            "gym:classes": "/api/classes/",
+            "gym:products": "/api/products/",
+            "gym:workouts": "/api/workouts/",
+        }
+        for name, path in expected_routes.items():
+            with self.subTest(name=name):
+                self.assertEqual(reverse(name), path)
+                self.assertIsNotNone(resolve(path).func)

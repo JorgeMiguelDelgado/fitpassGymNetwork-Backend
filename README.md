@@ -1,5 +1,8 @@
 # FitPass Gym API
 
+La definicion de modulos, sus dependencias permitidas y la guia para extender
+el sistema se encuentran en [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 Monolito modular desarrollado con Django y PostgreSQL para administrar sedes,
 clases, reservas, listas de espera, asistencia, accesos, productos, promociones,
 pagos y contenido virtual de una red de gimnasios.
