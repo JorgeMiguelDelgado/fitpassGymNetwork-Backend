@@ -4,7 +4,9 @@ from django.db.models import Max
 from django.utils import timezone
 
 from ..notifications.models import Notification
+from ..shared.events import get_event_bus
 from .models import Booking, FitnessClass
+from .domain import UserPromotedFromWaitlistEvent
 
 
 @transaction.atomic
@@ -31,12 +33,21 @@ def book_class(user, class_id):
         existing.status, existing.waitlist_position = status, position
         existing.save(update_fields=("status", "waitlist_position", "updated_at"))
         return existing, True
-    return Booking.objects.create(
+    booking = Booking.objects.create(
         user=user,
         fitness_class=fitness_class,
         status=status,
         waitlist_position=position,
-    ), True
+    )
+    # Publish event
+    get_event_bus().publish(UserPromotedFromWaitlistEvent(
+        aggregate_id=booking.id,
+        user_id=user.id,
+        booking_id=booking.id,
+        class_id=class_id,
+        timestamp=timezone.now(),
+    )) if status == Booking.Status.CONFIRMED else None
+    return booking, True
 
 
 @transaction.atomic
@@ -64,6 +75,14 @@ def cancel_booking(user, booking_id):
                 message=f"Your place in {booking.fitness_class.title} is confirmed.",
                 data={"class_id": booking.fitness_class_id},
             )
+            # Publish event
+            get_event_bus().publish(UserPromotedFromWaitlistEvent(
+                aggregate_id=promoted.id,
+                user_id=promoted.user_id,
+                booking_id=promoted.id,
+                class_id=booking.fitness_class_id,
+                timestamp=timezone.now(),
+            ))
     queued_bookings = Booking.objects.filter(
         fitness_class=booking.fitness_class,
         status=Booking.Status.WAITLISTED,
