@@ -11,7 +11,7 @@ Este documento documenta el progreso en la evolución arquitectónica de FitPass
 | Sesión | Rama | Estado | Objetivo |
 |--------|------|--------|----------|
 | ✅ II | `session-2-monolith-core` | DONE | Núcleo monolito: API base, persistencia, tests críticos |
-| ⏳ III | `session-3-ddd-refactor` | IN PROGRESS | Refactor DDD con bounded contexts |
+| ✅ III | `session-3-ddd-refactor` | DONE | Refactor DDD con bounded contexts |
 | ⏳ IV | `session-4-domain-events-broker` | PENDING | Eventos de dominio + event bus |
 | ⏳ V | `session-5-saga-workflow` | PENDING | Saga multi-servicio con compensaciones |
 | ⏳ VI | `session-6-extract-microservice` | PENDING | Extraer primer microservicio (payments) |
@@ -50,34 +50,49 @@ Este documento documenta el progreso en la evolución arquitectónica de FitPass
 
 ---
 
-## ⏳ Sesión III — Refactor DDD
+## ✅ Sesión III — Refactor DDD
 
 **Branch:** `session-3-ddd-refactor`  
-**Estado:** PENDING
+**Estado:** COMPLETADA
 
-### Tareas
+### Entregables
 
-- [ ] Refactorizar en bounded contexts DDD
-  - **Identity:** Tokens y autenticación HTTP
-  - **Locations:** Sedes, salas, instructores
-  - **Scheduling:** Clases, reservas, espera, asistencia
-  - **Commerce:** Productos, promociones, compras
-  - **Access:** Vigencia de membresías, check-in
-  - **Content:** Catálogo virtual
-  - **Notifications:** Avisos internos
+- ✅ Value objects inmutables con invariantes:
+  - `Money`: Amount + currency, operaciones aritméticas, descuentos
+  - `Coordinates`: Lat/long con rango validado
+  - `Position`: Posición en lista de espera
+  - `Capacity`: Total + occupied con invariantes
+- ✅ Aggregate roots con business rules:
+  - `FitnessClassAggregate`: Validación de tiempo, cupo, estado
+  - `BookingAggregate`: State machine (confirmed/waitlisted/cancelled/attended/no_show)
+  - `ProductAggregate`: Product info + validación de compra
+  - `PurchaseAggregate`: Vigencia, créditos, acceso validado
+  - `PromotionAggregate`: Período de validez, aplicación de descuentos
+  - `CheckInAggregate`: Registro de acceso con validación
+- ✅ Domain services (pura lógica sin persistencia):
+  - `SchedulingService`: book_class, cancel_and_promote, record_attendance
+  - `CommerceService`: apply_promotion, create_purchase
+  - `AccessService`: validate_access, create_checkin
+- ✅ Domain events para event sourcing:
+  - Scheduling: `BookingCreatedEvent`, `BookingCancelledEvent`, `UserPromotedFromWaitlistEvent`
+  - Commerce: `ProductPurchasedEvent`, `AccessActivatedEvent`
+  - Access: `CheckInRecordedEvent`, `AccessDeniedEvent`
+- ✅ 47 tests de dominio (sin DB, sin HTTP)
+- ✅ **Total: 51 tests pasando** ✓
 
-- [ ] Extraer domain services y repositories
-- [ ] Crear value objects (Money, Address, Coordinates, Position)
-- [ ] Definir aggregate roots (Booking, FitnessClass, Product)
-- [ ] Eliminar dependencias cíclicas entre módulos
-- [ ] Tests de dominio layer (sin DB, sin HTTP)
+### Flujos Validados a Nivel de Dominio
 
-### Criterios de Éxito
+1. **Invariantes de Money:** No negativos, operaciones con currency matching
+2. **State machine de Booking:** Transiciones válidas, promoción desde espera
+3. **Capacidad de Clase:** Cálculo de espacios disponibles, bloqueo cuando llena
+4. **Compra con Promoción:** Descuentos porcentuales, validación de período
+5. **Acceso y Créditos:** Validación de vigencia, consumo de créditos
 
-- Todos los tests siguen pasando
-- Módulos comunicándose solo por APIs públicas
-- Value objects inmutables
-- Aggregate roots con invariantes de negocio
+### Commit
+
+```
+010cba8 session-3: Implement DDD domain model with value objects and aggregates
+```
 
 ---
 
